@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cifras</title>
+<meta name="theme-color" content="#ffffff">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+/* VOICE: seco, silencioso — uma folha de papel na estante de partitura
+   IDEA: folha de cifra impressa; nada além de texto e acordes
+   PICTURE: a própria cifra, ocupando a tela inteira
+   COLOUR and TYPE: branco, tinta preta, acordes em laranja queimado; monoespaçada para alinhar
+   LAYOUT: biblioteca em lista; música em tela cheia com barra inferior que some ao tocar */
+:root{--bg:#fff;--ink:#111;--mut:#777;--line:#e6e6e6;--ch:#c04f00;--mono:ui-monospace,"SF Mono",Menlo,Consolas,"Roboto Mono","Liberation Mono",monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--sans);-webkit-tap-highlight-color:transparent}
+button,input,textarea{font:inherit;color:inherit}
+button{background:none;border:1px solid var(--line);border-radius:10px;min-height:44px;min-width:44px;padding:0 12px;cursor:pointer}
+button:active{background:#f3f3f3}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--ch);outline-offset:2px}
+.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+[hidden]{display:none!important}
+.wrap{max-width:760px;margin:0 auto;padding:16px}
+header.bar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:2}
+header.bar h1{font-size:20px;margin:0;flex:1;font-weight:600}
+#search{width:100%;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px}
+#list{list-style:none;margin:0;padding:0}
+#list li{border-bottom:1px solid var(--line)}
+#list a{display:block;padding:14px 4px;text-decoration:none;color:inherit}
+#list b{display:block;font-weight:600}
+#list span{color:var(--mut);font-size:14px}
+.empty{color:var(--mut);padding:32px 4px;text-align:center}
+.foot{display:flex;gap:8px;flex-wrap:wrap;margin-top:24px}
+.foot label{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:10px;min-height:44px;padding:0 12px;cursor:pointer}
+.ed label{display:block;font-size:14px;color:var(--mut);margin:12px 0 4px}
+.ed input,.ed textarea{width:100%;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:10px}
+.ed textarea{font-family:var(--mono);font-size:14px;min-height:55vh;white-space:pre;overflow-x:auto}
+.hint{font-size:13px;color:var(--mut);margin:6px 0 0}
+.danger{color:#b00020;border-color:#f0c7cd;margin-top:24px}
+/* tela da música */
+#top{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(255,255,255,.96);border-bottom:1px solid var(--line);z-index:3}
+#top .t{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:15px}
+#top .t small{color:var(--mut)}
+#sheet{font-family:var(--mono);white-space:pre;margin:0;padding:72px 16px 45vh;overflow-x:auto;line-height:1.35}
+#sheet .c{color:var(--ch);font-weight:700}
+#sheet .s{color:var(--mut);font-family:var(--sans);font-weight:600}
+#ctl{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.97);border-top:1px solid var(--line);padding:8px 8px calc(8px + env(safe-area-inset-bottom));display:flex;flex-wrap:wrap;justify-content:center;gap:6px 14px;z-index:3}
+.grp{display:flex;align-items:center;gap:4px}
+.grp .lb{font-size:12px;color:var(--mut);margin-right:2px}
+.val{min-width:52px;text-align:center;font-variant-numeric:tabular-nums;font-weight:600;border:0}
+#play{min-width:64px}
+#play.on{background:var(--ch);border-color:var(--ch);color:#fff}
+.hide #top,.hide #ctl{display:none}
+.hide #sheet{padding-top:16px}
+#toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#111;color:#fff;padding:8px 14px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
+#toast.on{opacity:1}
+@media (prefers-reduced-motion:reduce){#toast{transition:none}}
+</style>
+</head>
+<body>
+
+<section id="lib">
+  <header class="bar"><h1>Cifras</h1><button class="pri" id="addBtn">+ Nova</button></header>
+  <div class="wrap">
+    <input id="search" type="search" placeholder="Buscar música ou artista" autocomplete="off">
+    <ul id="list"></ul>
+    <div class="foot">
+      <button id="exportBtn">Copiar backup</button>
+      <button id="importBtn">Colar backup</button>
+      <label>Abrir arquivo .json<input id="importFile" type="file" accept=".json,application/json" hidden></label>
+    </div>
+  </div>
+</section>
+
+<section id="edit" hidden>
+  <header class="bar"><button id="cancelBtn">Cancelar</button><h1 id="edTitle">Nova cifra</h1><button class="pri" id="saveBtn">Salvar</button></header>
+  <div class="wrap ed">
+    <label for="fTitle">Música</label><input id="fTitle" autocomplete="off">
+    <label for="fArtist">Artista</label><input id="fArtist" autocomplete="off">
+    <label for="fText">Cifra</label>
+    <textarea id="fText" spellcheck="false" placeholder="Cole aqui a cifra (acordes na linha de cima, letra embaixo)"></textarea>
+    <p class="hint">Na página da cifra: selecione do primeiro acorde até o fim, copie e cole aqui. Seções como [Intro] e [Refrão] viram rótulos. Linhas de tablatura são mantidas como estão.</p>
+    <button class="danger" id="delBtn" hidden>Excluir esta cifra</button>
+  </div>
+</section>
+
+<section id="song" hidden>
+  <div id="top">
+    <button id="backBtn" aria-label="Voltar">←</button>
+    <div class="t" id="songTitle"></div>
+    <button id="editBtn">Editar</button>
+  </div>
+  <pre id="sheet"></pre>
+  <div id="ctl">
+    <div class="grp"><span class="lb">Tom</span><button id="tDown" aria-label="Baixar meio tom">−</button><button class="val" id="tVal" title="Toque para voltar ao tom original"></button><button id="tUp" aria-label="Subir meio tom">+</button></div>
+    <div class="grp"><span class="lb">Letra</span><button id="fDown" aria-label="Diminuir letra">A−</button><button id="fUp" aria-label="Aumentar letra">A+</button></div>
+    <div class="grp"><span class="lb">Rolagem</span><button id="sDown" aria-label="Mais devagar">−</button><span class="val" id="sVal"></span><button id="sUp" aria-label="Mais rápido">+</button><button id="play">▶</button></div>
+  </div>
+</section>
+
+<div id="toast"></div>
+
+<script>
+{
+/* ---------- armazenamento ---------- */
+const KEY = 'cifras.v1';
+let db = { songs: [] };
+const load = () => { try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && Array.isArray(d.songs)) db = d; } catch (e) {} };
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { toast('Não foi possível salvar neste navegador'); } };
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+/* ---------- teoria: acordes e transposição ---------- */
+const IDX = {C:0,'B#':0,'C#':1,Db:1,D:2,'D#':3,Eb:3,E:4,Fb:4,F:5,'E#':5,'F#':6,Gb:6,G:7,'G#':8,Ab:8,A:9,'A#':10,Bb:10,B:11,Cb:11};
+const SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const FLAT  = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+const CHORD = /^\(?([A-G][#b]?)((?:maj|min|dim|aug|sus|add|m|M|º|°|\+|-|\d|\(|\)|,|\/(?=\d)|[#b](?=\d))*)(?:\/([A-G][#b]?))?\)?$/;
+const FILL = /^(\||x?\d+x?|\(\d+x\)|-+|\.+|%|\/|\*)$/i;
+const LABEL = /^(\s*)(\[[^\]]+\])/;
+const TAB = /^\s*[A-Ga-g]?\|[-\d|hpbrx\/\\~^ ().]*$/;
+const isChord = t => CHORD.test(t);
+let useFlats = false;
+const tn = (n, k) => (useFlats ? FLAT : SHARP)[((IDX[n] + k) % 12 + 12) % 12];
+const trChord = (t, k) => k ? t.replace(CHORD, (all, r, suf, bass) => {
+  const pre = all.startsWith('(') ? '(' : '', post = all.endsWith(')') && !(suf.endsWith(')')) ? ')' : '';
+  return pre + tn(r, k) + suf + (bass ? '/' + tn(bass, k) : '') + post;
+}) : t;
+const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+function isChordLine(s) {
+  const toks = s.trim().split(/\s+/).filter(Boolean);
+  if (!toks.length) return false;
+  let n = 0;
+  for (const t of toks) { if (isChord(t)) n++; else if (!FILL.test(t)) return false; }
+  return n > 0;
+}
+
+/* devolve HTML da linha de acordes transposta mantendo as colunas */
+function renderChords(s, k, offset) {
+  let out = '', html = '';
+  const re = /\S+/g; let m;
+  while ((m = re.exec(s))) {
+    const col = m.index + offset, t = m[0], c = isChord(t), nt = c ? trChord(t, k) : t;
+    const pad = out.length < col ? col - out.length : (out.length ? 1 : 0);
+    out += ' '.repeat(pad) + nt;
+    html += ' '.repeat(pad) + (c ? '<span class="c">' + esc(nt) + '</span>' : esc(nt));
+  }
+  return html;
+}
+
+function render(text, k) {
+  return text.replace(/\r/g, '').split('\n').map(line => {
+    const lm = line.match(LABEL);
+    if (lm) {
+      const rest = line.slice(lm[0].length);
+      const head = lm[1] + '<span class="s">' + esc(lm[2]) + '</span>';
+      if (!rest.trim()) return head;
+      if (isChordLine(rest)) return head + renderChords(rest, k, 0).replace(/^/, '');
+      return head + esc(rest);
+    }
+    if (TAB.test(line) && line.includes('-')) return esc(line);
+    if (isChordLine(line)) return renderChords(line, k, 0);
+    return esc(line);
+  }).join('\n');
+}
+
+function songKey(text) {
+  for (const line of text.split('\n')) {
+    const body = line.replace(LABEL, '');
+    if (!isChordLine(body)) continue;
+    for (const t of body.trim().split(/\s+/)) {
+      const m = t.match(CHORD);
+      if (m) return { root: m[1], minor: /^m(?!aj)/.test(m[2]) };
+    }
+  }
+  return null;
+}
+
+/* ---------- UI ---------- */
+const $ = id => document.getElementById(id);
+const views = ['lib', 'edit', 'song'];
+const show = v => views.forEach(x => $(x).hidden = x !== v);
+let cur = null, editing = null;
+
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('on'), 1800); }
+
+function drawList() {
+  const q = $('search').value.trim().toLowerCase();
+  const items = db.songs.filter(s => (s.title + ' ' + s.artist).toLowerCase().includes(q))
+    .sort((a, b) => a.title.localeCompare(b.title, 'pt'));
+  $('list').innerHTML = items.length ? items.map(s =>
+    `<li><a href="#" data-id="${s.id}"><b>${esc(s.title || 'Sem título')}</b><span>${esc(s.artist || '')}</span></a></li>`).join('')
+    : `<li class="empty">${db.songs.length ? 'Nada encontrado.' : 'Nenhuma cifra ainda. Toque em “+ Nova” e cole uma cifra.'}</li>`;
+}
+
+function openEdit(song) {
+  editing = song;
+  $('edTitle').textContent = song ? 'Editar' : 'Nova cifra';
+  $('fTitle').value = song ? song.title : '';
+  $('fArtist').value = song ? song.artist : '';
+  $('fText').value = song ? song.text : '';
+  $('delBtn').hidden = !song;
+  show('edit'); window.scrollTo(0, 0);
+}
+
+function openSong(song) {
+  cur = song; stop();
+  document.body.classList.remove('hide');
+  $('songTitle').innerHTML = esc(song.title || 'Sem título') + (song.artist ? ' <small>· ' + esc(song.artist) + '</small>' : '');
+  show('song'); paint(); window.scrollTo(0, 0);
+}
+
+function paint() {
+  const k = cur.transpose || 0, key = songKey(cur.text);
+  if (key) { const target = (IDX[key.root] + k + 12) % 12; useFlats = [1,3,5,8,10].includes(target) ? true : false;
+    if (k === 0) useFlats = key.root.includes('b'); }
+  $('sheet').innerHTML = render(cur.text, k);
+  $('sheet').style.fontSize = (cur.font || 15) + 'px';
+  const kt = key ? tn(key.root, k) + (key.minor ? 'm' : '') : (k > 0 ? '+' + k : String(k));
+  $('tVal').textContent = kt + (k ? ` (${k > 0 ? '+' : ''}${k})` : '');
+  $('sVal').textContent = speed().toFixed(1);
+}
+const speed = () => cur.speed ?? 2;
+const upd = patch => { Object.assign(cur, patch, { updated: Date.now() }); save(); paint(); };
+
+/* ---------- rolagem automática ---------- */
+let raf = 0, last = 0, acc = 0, lock = null;
+const PX = v => v * 12; // nível 1.0 = 12 px/s
+function step(t) {
+  if (last) { acc += PX(speed()) * (t - last) / 1000; const d = Math.floor(acc); if (d >= 1) { window.scrollBy(0, d); acc -= d; } }
+  last = t;
+  if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) { stop(); return; }
+  raf = requestAnimationFrame(step);
+}
+async function wake(on) {
+  try { if (on && 'wakeLock' in navigator) lock = await navigator.wakeLock.request('screen'); else if (lock) { await lock.release(); lock = null; } } catch (e) {}
+}
+function start() { if (raf) return; last = 0; acc = 0; raf = requestAnimationFrame(step); $('play').textContent = '❚❚'; $('play').classList.add('on'); wake(true); }
+function stop() { cancelAnimationFrame(raf); raf = 0; $('play').textContent = '▶'; $('play').classList.remove('on'); wake(false); }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && raf) wake(true); });
+
+/* ---------- eventos ---------- */
+$('addBtn').onclick = () => openEdit(null);
+$('search').oninput = drawList;
+$('list').onclick = e => { const a = e.target.closest('a[data-id]'); if (!a) return; e.preventDefault(); openSong(db.songs.find(s => s.id === a.dataset.id)); };
+$('cancelBtn').onclick = () => editing ? openSong(editing) : (show('lib'), drawList());
+$('saveBtn').onclick = () => {
+  const title = $('fTitle').value.trim(), artist = $('fArtist').value.trim(), text = $('fText').value.replace(/\s+$/, '');
+  if (!text) { toast('Cole a cifra primeiro'); return; }
+  let s = editing;
+  if (s) Object.assign(s, { title, artist, text, updated: Date.now() });
+  else { s = { id: uid(), title, artist, text, transpose: 0, speed: 2, font: 15, updated: Date.now() }; db.songs.push(s); }
+  save(); openSong(s);
+};
+$('delBtn').onclick = () => {
+  const b = $('delBtn');
+  if (b.dataset.armed) { db.songs = db.songs.filter(s => s !== editing); save(); editing = null; delete b.dataset.armed; b.textContent = 'Excluir esta cifra'; show('lib'); drawList(); return; }
+  b.dataset.armed = 1; b.textContent = 'Toque de novo para confirmar';
+  setTimeout(() => { delete b.dataset.armed; b.textContent = 'Excluir esta cifra'; }, 3000);
+};
+$('backBtn').onclick = () => { stop(); show('lib'); drawList(); };
+$('editBtn').onclick = () => { stop(); openEdit(cur); };
+$('tUp').onclick = () => upd({ transpose: ((cur.transpose || 0) + 1 + 17) % 12 - 5 });
+$('tDown').onclick = () => upd({ transpose: ((cur.transpose || 0) - 1 + 17) % 12 - 5 });
+$('tVal').onclick = () => upd({ transpose: 0 });
+$('fUp').onclick = () => upd({ font: Math.min(32, (cur.font || 15) + 1) });
+$('fDown').onclick = () => upd({ font: Math.max(9, (cur.font || 15) - 1) });
+$('sUp').onclick = () => upd({ speed: Math.min(20, Math.round((speed() + (speed() < 3 ? 0.2 : 0.5)) * 10) / 10) });
+$('sDown').onclick = () => upd({ speed: Math.max(0.2, Math.round((speed() - (speed() <= 3 ? 0.2 : 0.5)) * 10) / 10) });
+$('play').onclick = () => raf ? stop() : start();
+$('sheet').onclick = () => document.body.classList.toggle('hide');
+document.addEventListener('keydown', e => { if ($('song').hidden) return; if (e.code === 'Space') { e.preventDefault(); raf ? stop() : start(); } });
+
+/* backup */
+$('exportBtn').onclick = async () => { try { await navigator.clipboard.writeText(JSON.stringify(db)); toast('Backup copiado'); } catch (e) { toast('Não deu para copiar aqui'); } };
+const importJson = txt => { try { const d = JSON.parse(txt); if (!Array.isArray(d.songs)) throw 0;
+  const ids = new Set(db.songs.map(s => s.id)); let n = 0;
+  for (const s of d.songs) if (!ids.has(s.id)) { db.songs.push(s); n++; }
+  save(); drawList(); toast(n + ' cifra(s) importada(s)'); } catch (e) { toast('Backup inválido'); } };
+$('importBtn').onclick = async () => { try { importJson(await navigator.clipboard.readText()); } catch (e) { toast('Use "Abrir arquivo" neste navegador'); } };
+$('importFile').onchange = e => { const f = e.target.files[0]; if (f) f.text().then(importJson); e.target.value = ''; };
+
+/* ---------- início ---------- */
+load();
+if (!db.songs.length && !localStorage.getItem(KEY + '.seeded')) {
+  db.songs.push({ id: uid(), title: 'Exemplo', artist: 'Cifra de teste', transpose: 0, speed: 2, font: 15, updated: Date.now(), text:
+`[Intro] Am  F  C  G
+
+[Primeira Parte]
+
+Am              F
+  Abre a janela, deixa o sol entrar
+C                   G
+  Café na mesa, nada pra apressar
+Am                F
+  O dia é longo, a rua vai esperar
+Dm          E7
+  Mais um compasso antes de sair
+
+[Refrão]
+
+F         G       C    Am
+  Toca devagar, devagar
+Dm          G7        C  E7
+  Que a canção sabe o caminho` });
+  try { localStorage.setItem(KEY + '.seeded', '1'); } catch (e) {}
+  save();
+}
+drawList();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
