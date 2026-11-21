@@ -1,5 +1,5 @@
 // Troque a versão a cada atualização dos arquivos para o celular baixar a nova.
-const CACHE = 'cifras-v5';
+const CACHE = 'cifras-v6';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

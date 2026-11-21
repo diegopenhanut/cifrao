@@ -149,38 +149,103 @@ function isChordLine(s) {
   return n > 0;
 }
 
-/* devolve HTML da linha de acordes transposta mantendo as colunas */
-function renderChords(s, k, offset) {
-  let out = '', html = '';
+/* texto da linha de acordes já transposto, mantendo as colunas */
+function chordsText(s, k) {
+  let out = '';
   const re = /\S+/g; let m;
   while ((m = re.exec(s))) {
-    const col = m.index + offset, t = m[0], c = isChord(t), nt = c ? trChord(t, k) : t;
+    const col = m.index, t = m[0], nt = isChord(t) ? trChord(t, k) : t;
     const pad = out.length < col ? col - out.length : (out.length ? 1 : 0);
     out += ' '.repeat(pad) + nt;
-    html += ' '.repeat(pad) + (c ? '<span class="c">' + esc(nt) + '</span>' : esc(nt));
   }
-  return html;
+  return out;
+}
+/* destaca os acordes de um texto de acordes */
+const hl = s => s.replace(/\S+/g, t => isChord(t) ? '<span class="c">' + esc(t) + '</span>' : esc(t));
+const renderChords = (s, k) => hl(chordsText(s, k));
+
+/* ---------- quebra de linhas longas ---------- */
+const lead = s => s.length - s.trimStart().length;
+
+/* coluna onde cortar (o trecho fica em [0,p)): não parte acorde nem palavra, se possível */
+function breakCol(c, l, cols) {
+  const spans = []; const re = /\S+/g; let m;
+  while ((m = re.exec(c))) spans.push([m.index, m.index + m[0].length]);
+  const straddles = p => spans.some(([a, z]) => a < p && p < z);
+  const wordOk = p => p >= l.length || l[p] === ' ' || l[p - 1] === ' ' || l[p] === undefined;
+  let any = 0;
+  for (let p = cols; p >= 1; p--) {
+    if (straddles(p)) continue;
+    if (!any) any = p;
+    if (wordOk(p)) return p;
+  }
+  return any || cols;
 }
 
-function render(text, k) {
+/* quebra um par (acordes c / letra l) na mesma coluna; devolve [[c, l], ...] */
+function wrapPair(c, l, cols) {
+  const out = [];
+  c = c.replace(/\s+$/, ''); l = l.replace(/\s+$/, '');
+  while (Math.max(c.length, l.length) > cols) {
+    const b = breakCol(c, l, cols);
+    out.push([c.slice(0, b).replace(/\s+$/, ''), l.slice(0, b).replace(/\s+$/, '')]);
+    c = c.slice(b); l = l.slice(b);
+    const n = Math.min(c.trim() ? lead(c) : Infinity, l.trim() ? lead(l) : Infinity);
+    if (!isFinite(n)) { c = ''; l = ''; break; }
+    c = c.slice(n); l = l.slice(n);
+  }
+  if (c.trim() || l.trim() || !out.length) out.push([c, l]);
+  return out;
+}
+
+/* letra sem acordes em cima: quebra no último espaço, continuação recuada */
+function wrapText(l, cols, indent = 2) {
+  l = l.replace(/\s+$/, '');
+  if (l.length <= cols) return [l];
+  const out = []; let first = true;
+  while (l.length > (first ? cols : cols - indent)) {
+    const w = first ? cols : cols - indent;
+    let p = l.lastIndexOf(' ', w);
+    if (p < Math.ceil(w * 0.4)) p = w;
+    out.push((first ? '' : ' '.repeat(indent)) + l.slice(0, p).replace(/\s+$/, ''));
+    l = l.slice(p).trimStart(); first = false;
+  }
+  if (l) out.push((first ? '' : ' '.repeat(indent)) + l);
+  return out;
+}
+
+function render(text, k, cols = Infinity) {
   let lines = clean(text).replace(/\r/g, '').split('\n');
   if (hideTab) { // tira as linhas de tablatura e junta as linhas em branco que sobram
     lines = lines.filter(l => !isTab(l));
     lines = lines.filter((l, i) => l.trim() || (i > 0 && lines[i - 1].trim()));
   }
-  return lines.map(line => {
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const lm = line.match(LABEL);
     if (lm) {
       const rest = line.slice(lm[0].length);
       const head = lm[1] + '<span class="s">' + esc(lm[2]) + '</span>';
-      if (!rest.trim()) return head;
-      if (isChordLine(rest)) return head + renderChords(rest, k, 0).replace(/^/, '');
-      return head + esc(rest);
+      if (!rest.trim()) out.push(head);
+      else if (isChordLine(rest)) out.push(head + renderChords(rest, k));
+      else out.push(head + esc(rest));
+      continue;
     }
-    if (isTab(line)) return esc(line);
-    if (isChordLine(line)) return renderChords(line, k, 0);
-    return esc(line);
-  }).join('\n');
+    if (isTab(line)) { out.push(esc(line)); continue; }
+    if (isChordLine(line)) {
+      const nxt = lines[i + 1];
+      const paired = nxt !== undefined && nxt.trim() && !LABEL.test(nxt) && !isTab(nxt) && !isChordLine(nxt);
+      if (paired) i++;
+      for (const [c, l] of wrapPair(chordsText(line, k), paired ? lines[i] : '', cols)) {
+        if (c.trim()) out.push(hl(c));
+        if (l.trim()) out.push(esc(l));
+      }
+      continue;
+    }
+    for (const part of wrapText(line, cols)) out.push(esc(part));
+  }
+  return out.join('\n');
 }
 
 function songKey(text) {
@@ -229,12 +294,24 @@ function openSong(song) {
   show('song'); paint(); window.scrollTo(0, 0);
 }
 
+/* quantas colunas de texto cabem na largura do #sheet com a fonte atual */
+function measureCols() {
+  const sh = $('sheet'), cs = getComputedStyle(sh), probe = document.createElement('span');
+  probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font:inherit';
+  probe.textContent = 'M'.repeat(50);
+  sh.appendChild(probe);
+  const w = probe.getBoundingClientRect().width / 50;
+  sh.removeChild(probe);
+  const avail = sh.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  return w > 0 && avail > 0 ? Math.max(12, Math.floor(avail / w + 1e-6)) : Infinity;
+}
+
 function paint() {
   const k = cur.transpose || 0, key = songKey(cur.text);
   if (key) { const target = (IDX[key.root] + k + 12) % 12; useFlats = [1,3,5,8,10].includes(target) ? true : false;
     if (k === 0) useFlats = key.root.includes('b'); }
-  $('sheet').innerHTML = render(cur.text, k);
   $('sheet').style.fontSize = (cur.font || 15) + 'px';
+  $('sheet').innerHTML = render(cur.text, k, measureCols());
   const kt = key ? tn(key.root, k) + (key.minor ? 'm' : '') : (k > 0 ? '+' + k : String(k));
   $('tVal').textContent = kt + (k ? ` (${k > 0 ? '+' : ''}${k})` : '');
   $('sVal').textContent = speed().toFixed(1);
@@ -256,6 +333,8 @@ async function wake(on) {
 }
 function start() { if (raf) return; last = 0; acc = 0; raf = requestAnimationFrame(step); $('play').textContent = '❚❚'; $('play').classList.add('on'); wake(true); }
 function stop() { cancelAnimationFrame(raf); raf = 0; $('play').textContent = '▶'; $('play').classList.remove('on'); wake(false); }
+let lastW = window.innerWidth;
+addEventListener('resize', () => { if (window.innerWidth === lastW) return; lastW = window.innerWidth; clearTimeout(paint.h); paint.h = setTimeout(() => { if (cur && !$('song').hidden) paint(); }, 150); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && raf) wake(true); });
 
 /* ---------- eventos ---------- */
