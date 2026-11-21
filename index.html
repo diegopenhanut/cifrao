@@ -47,11 +47,15 @@ header.bar h1{font-size:20px;margin:0;flex:1;font-weight:600}
 #sheet{font-family:var(--mono);white-space:pre;margin:0;padding:72px 16px 45vh;overflow-x:auto;line-height:1.35}
 #sheet .c{color:var(--ch);font-weight:700}
 #sheet .s{color:var(--mut);font-family:var(--sans);font-weight:600}
-#ctl{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.97);border-top:1px solid var(--line);padding:8px 8px calc(8px + env(safe-area-inset-bottom));display:flex;flex-wrap:wrap;justify-content:center;gap:6px 14px;z-index:3}
-.grp{display:flex;align-items:center;gap:4px}
-.grp .lb{font-size:12px;color:var(--mut);margin-right:2px}
-.val{min-width:52px;text-align:center;font-variant-numeric:tabular-nums;font-weight:600;border:0}
-#play{min-width:64px}
+#ctl{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.97);border-top:1px solid var(--line);padding:4px 4px calc(4px + env(safe-area-inset-bottom));display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 4px;z-index:3}
+.grp{display:flex;flex-direction:column;align-items:center;gap:1px}
+.grp .row{display:flex;align-items:center;gap:2px}
+.grp .lb{font-size:11px;line-height:1.2;color:var(--mut)}
+#ctl button{min-height:34px;min-width:28px;padding:0 3px;font-size:13px;border-radius:8px}
+.val{min-width:26px;text-align:center;font-variant-numeric:tabular-nums;font-weight:600;border:0;font-size:13px}
+#tVal{min-width:40px}
+#ctl #play{min-width:30px}
+#ctl #tabBtn{min-width:36px}
 #play.on{background:var(--ch);border-color:var(--ch);color:#fff}
 .hide #top,.hide #ctl{display:none}
 .hide #sheet{padding-top:16px}
@@ -96,10 +100,10 @@ header.bar h1{font-size:20px;margin:0;flex:1;font-weight:600}
   </div>
   <pre id="sheet"></pre>
   <div id="ctl">
-    <div class="grp"><span class="lb">Tom</span><button id="tDown" aria-label="Baixar meio tom">−</button><button class="val" id="tVal" title="Toque para voltar ao tom original"></button><button id="tUp" aria-label="Subir meio tom">+</button></div>
-    <div class="grp"><span class="lb">Letra</span><button id="fDown" aria-label="Diminuir letra">A−</button><button id="fUp" aria-label="Aumentar letra">A+</button></div>
-    <div class="grp"><span class="lb">Rolagem</span><button id="sDown" aria-label="Mais devagar">−</button><span class="val" id="sVal"></span><button id="sUp" aria-label="Mais rápido">+</button><button id="play">▶</button></div>
-    <div class="grp"><span class="lb">Tab</span><button id="tabBtn" aria-pressed="false"></button></div>
+    <div class="grp"><span class="lb">Tom</span><div class="row"><button id="tDown" aria-label="Baixar meio tom">−</button><button class="val" id="tVal" title="Toque para voltar ao tom original"></button><button id="tUp" aria-label="Subir meio tom">+</button></div></div>
+    <div class="grp"><span class="lb">Letra</span><div class="row"><button id="fDown" aria-label="Diminuir letra">A−</button><button id="fUp" aria-label="Aumentar letra">A+</button></div></div>
+    <div class="grp"><span class="lb">Rolagem</span><div class="row"><button id="sDown" aria-label="Mais devagar">−</button><span class="val" id="sVal"></span><button id="sUp" aria-label="Mais rápido">+</button><button id="play">▶</button></div></div>
+    <div class="grp"><span class="lb">Tab</span><div class="row"><button id="tabBtn" aria-pressed="false"></button></div></div>
   </div>
 </section>
 
@@ -283,7 +287,7 @@ $('fDown').onclick = () => upd({ font: Math.max(9, (cur.font || 15) - 1) });
 $('sUp').onclick = () => upd({ speed: Math.min(20, Math.round((speed() + (speed() < 3 ? 0.2 : 0.5)) * 10) / 10) });
 $('sDown').onclick = () => upd({ speed: Math.max(0.2, Math.round((speed() - (speed() <= 3 ? 0.2 : 0.5)) * 10) / 10) });
 $('play').onclick = () => raf ? stop() : start();
-const paintTab = () => { $('tabBtn').textContent = hideTab ? 'Mostrar' : 'Esconder'; $('tabBtn').setAttribute('aria-pressed', hideTab); };
+const paintTab = () => { $('tabBtn').textContent = hideTab ? 'Off' : 'On'; $('tabBtn').setAttribute('aria-pressed', !hideTab); $('tabBtn').setAttribute('aria-label', hideTab ? 'Tablaturas escondidas. Toque para mostrar' : 'Tablaturas visíveis. Toque para esconder'); };
 $('tabBtn').onclick = () => { hideTab = !hideTab; try { localStorage.setItem('cifras.hideTab', hideTab ? '1' : '0'); } catch (e) {} paintTab(); paint(); };
 paintTab();
 $('sheet').onclick = () => document.body.classList.toggle('hide');
