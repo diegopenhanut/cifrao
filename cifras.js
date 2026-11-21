@@ -1,13 +1,42 @@
 #!/usr/bin/env node
 // Uso: node cifras.js [links.txt] [cifras.json]
+//      node cifras.js --limpar [cifras.json]   (só limpa o arquivo, sem baixar nada)
 // Requer Node 18+ (fetch nativo). Sem dependências.
 const fs = require('fs');
 
-const LINKS = process.argv[2] || 'links.txt';
-const OUT = process.argv[3] || 'cifras.json';
+const args = process.argv.slice(2);
+const LIMPAR = args.includes('--limpar');
+const pos = args.filter((a) => !a.startsWith('--'));
+const LINKS = LIMPAR ? null : pos[0] || 'links.txt';
+const OUT = (LIMPAR ? pos[0] : pos[1]) || 'cifras.json';
 const PAUSA_MS = 4000;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Caracteres de largura zero (U+200B..U+200D, U+FEFF) vêm no começo das linhas e
+// atrapalham a identificação das linhas de acordes.
+const LARGURA_ZERO = /[​-‍﻿]/g;
+
+function limparArquivo() {
+  const dados = JSON.parse(fs.readFileSync(OUT, 'utf8'));
+  if (!Array.isArray(dados.songs)) throw new Error(`${OUT} não tem a lista "songs"`);
+  let musicas = 0;
+  let chars = 0;
+  for (const s of dados.songs) {
+    const novo = String(s.text || '').replace(LARGURA_ZERO, '');
+    if (novo !== s.text) {
+      chars += s.text.length - novo.length;
+      musicas++;
+      s.text = novo;
+    }
+  }
+  if (!musicas) {
+    console.log(`${OUT} já está limpo (${dados.songs.length} músicas).`);
+    return;
+  }
+  fs.writeFileSync(OUT, JSON.stringify(dados, null, 2) + '\n');
+  console.log(`${musicas} de ${dados.songs.length} música(s) alterada(s), ${chars} caractere(s) removido(s) em ${OUT}.`);
+}
 
 const ENTIDADES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
 function decodificar(s) {
@@ -28,6 +57,7 @@ function extrair(html) {
   const pre = html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
   if (!pre) throw new Error('bloco <pre> não encontrado');
   const text = decodificar(semTags(pre[1].replace(/<br\s*\/?>/gi, '\n')))
+    .replace(LARGURA_ZERO, '')
     .replace(/\r\n?/g, '\n')
     .replace(/^\n+|\s+$/g, '');
   if (!text) throw new Error('cifra vazia');
@@ -167,7 +197,7 @@ async function main() {
   }
 }
 
-main().catch((e) => {
+(LIMPAR ? Promise.resolve().then(limparArquivo) : main()).catch((e) => {
   console.error(e.message);
   process.exit(1);
 });

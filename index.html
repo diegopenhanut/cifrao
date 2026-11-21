@@ -116,8 +116,10 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const IDX = {C:0,'B#':0,'C#':1,Db:1,D:2,'D#':3,Eb:3,E:4,Fb:4,F:5,'E#':5,'F#':6,Gb:6,G:7,'G#':8,Ab:8,A:9,'A#':10,Bb:10,B:11,Cb:11};
 const SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const FLAT  = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
-const CHORD = /^\(?([A-G][#b]?)((?:maj|min|dim|aug|sus|add|m|M|º|°|\+|-|\d|\(|\)|,|\/(?=\d)|[#b](?=\d))*)(?:\/([A-G][#b]?))?\)?$/;
-const FILL = /^(\||x?\d+x?|\(\d+x\)|-+|\.+|%|\/|\*)$/i;
+const CHORD = /^\(?([A-G][#b]?)((?:maj|min|dim|aug|sus|add|m|M|º|°|\+|-|–|\d|\(|\)|,|\/(?=\d)|[#b](?=\d)|b(?=\)))*)(?:\/([A-G][#b]?))?\)?$/;
+const FILL = /^(\||x?\d+x?:?|\(\d+x\)|-+|\.+|%|\/|\*|(intro|riff|solo|final|ponte|refr[aã]o|base):?)$/i;
+/* remove caracteres de largura zero (vêm no começo das linhas e quebram o reconhecimento dos acordes) */
+const clean = t => t.replace(/[​-‍﻿]/g, '');
 const LABEL = /^(\s*)(\[[^\]]+\])/;
 const TAB = /^\s*[A-Ga-g]?\|[-\d|hpbrx\/\\~^ ().]*$/;
 const isChord = t => CHORD.test(t);
@@ -130,7 +132,7 @@ const trChord = (t, k) => k ? t.replace(CHORD, (all, r, suf, bass) => {
 const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
 function isChordLine(s) {
-  const toks = s.trim().split(/\s+/).filter(Boolean);
+  const toks = s.replace(/(^|\s)[()](?=\s|$)/g, ' ').trim().split(/\s+/).filter(Boolean);
   if (!toks.length) return false;
   let n = 0;
   for (const t of toks) { if (isChord(t)) n++; else if (!FILL.test(t)) return false; }
@@ -151,7 +153,7 @@ function renderChords(s, k, offset) {
 }
 
 function render(text, k) {
-  return text.replace(/\r/g, '').split('\n').map(line => {
+  return clean(text).replace(/\r/g, '').split('\n').map(line => {
     const lm = line.match(LABEL);
     if (lm) {
       const rest = line.slice(lm[0].length);
@@ -167,7 +169,7 @@ function render(text, k) {
 }
 
 function songKey(text) {
-  for (const line of text.split('\n')) {
+  for (const line of clean(text).split('\n')) {
     const body = line.replace(LABEL, '');
     if (!isChordLine(body)) continue;
     for (const t of body.trim().split(/\s+/)) {
@@ -247,7 +249,7 @@ $('search').oninput = drawList;
 $('list').onclick = e => { const a = e.target.closest('a[data-id]'); if (!a) return; e.preventDefault(); openSong(db.songs.find(s => s.id === a.dataset.id)); };
 $('cancelBtn').onclick = () => editing ? openSong(editing) : (show('lib'), drawList());
 $('saveBtn').onclick = () => {
-  const title = $('fTitle').value.trim(), artist = $('fArtist').value.trim(), text = $('fText').value.replace(/\s+$/, '');
+  const title = $('fTitle').value.trim(), artist = $('fArtist').value.trim(), text = clean($('fText').value).replace(/\s+$/, '');
   if (!text) { toast('Cole a cifra primeiro'); return; }
   let s = editing;
   if (s) Object.assign(s, { title, artist, text, updated: Date.now() });
@@ -277,7 +279,7 @@ document.addEventListener('keydown', e => { if ($('song').hidden) return; if (e.
 $('exportBtn').onclick = async () => { try { await navigator.clipboard.writeText(JSON.stringify(db)); toast('Backup copiado'); } catch (e) { toast('Não deu para copiar aqui'); } };
 const importJson = txt => { try { const d = JSON.parse(txt); if (!Array.isArray(d.songs)) throw 0;
   const ids = new Set(db.songs.map(s => s.id)); let n = 0;
-  for (const s of d.songs) if (!ids.has(s.id)) { db.songs.push(s); n++; }
+  for (const s of d.songs) if (!ids.has(s.id)) { s.text = clean(String(s.text || '')); db.songs.push(s); n++; }
   save(); drawList(); toast(n + ' cifra(s) importada(s)'); } catch (e) { toast('Backup inválido'); } };
 $('importBtn').onclick = async () => { try { importJson(await navigator.clipboard.readText()); } catch (e) { toast('Use "Abrir arquivo" neste navegador'); } };
 $('importFile').onchange = e => { const f = e.target.files[0]; if (f) f.text().then(importJson); e.target.value = ''; };
