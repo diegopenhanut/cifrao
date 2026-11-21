@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cifras</title>
+<title>Cifrão</title>
 <meta name="theme-color" content="#ffffff">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -63,7 +63,7 @@ header.bar h1{font-size:20px;margin:0;flex:1;font-weight:600}
 <body>
 
 <section id="lib">
-  <header class="bar"><h1>Cifras</h1><button class="pri" id="addBtn">+ Nova</button></header>
+  <header class="bar"><h1>Cifrão</h1><button class="pri" id="addBtn">+ Nova</button></header>
   <div class="wrap">
     <input id="search" type="search" placeholder="Buscar música ou artista" autocomplete="off">
     <ul id="list"></ul>
@@ -71,6 +71,7 @@ header.bar h1{font-size:20px;margin:0;flex:1;font-weight:600}
       <button id="exportBtn">Copiar backup</button>
       <button id="importBtn">Colar backup</button>
       <label>Abrir arquivo .json<input id="importFile" type="file" accept=".json,application/json" hidden></label>
+      <label>Reimportar arquivo .json<input id="reimportFile" type="file" accept=".json,application/json" hidden></label>
     </div>
   </div>
 </section>
@@ -98,6 +99,7 @@ header.bar h1{font-size:20px;margin:0;flex:1;font-weight:600}
     <div class="grp"><span class="lb">Tom</span><button id="tDown" aria-label="Baixar meio tom">−</button><button class="val" id="tVal" title="Toque para voltar ao tom original"></button><button id="tUp" aria-label="Subir meio tom">+</button></div>
     <div class="grp"><span class="lb">Letra</span><button id="fDown" aria-label="Diminuir letra">A−</button><button id="fUp" aria-label="Aumentar letra">A+</button></div>
     <div class="grp"><span class="lb">Rolagem</span><button id="sDown" aria-label="Mais devagar">−</button><span class="val" id="sVal"></span><button id="sUp" aria-label="Mais rápido">+</button><button id="play">▶</button></div>
+    <div class="grp"><span class="lb">Tab</span><button id="tabBtn" aria-pressed="false"></button></div>
   </div>
 </section>
 
@@ -121,7 +123,11 @@ const FILL = /^(\||x?\d+x?:?|\(\d+x\)|-+|\.+|%|\/|\*|(intro|riff|solo|final|pont
 /* remove caracteres de largura zero (vêm no começo das linhas e quebram o reconhecimento dos acordes) */
 const clean = t => t.replace(/[​-‍﻿]/g, '');
 const LABEL = /^(\s*)(\[[^\]]+\])/;
-const TAB = /^\s*[A-Ga-g]?\|[-\d|hpbrx\/\\~^ ().]*$/;
+const TAB = /^\s*[A-Ga-g][#b]?\|[-\d|hpbrsxX\/\\~^ ().*:=<>+–—]*$/;
+const isTab = l => TAB.test(l) && /-{2,}|[–—]/.test(l);
+/* preferência do viewer: esconder tablaturas */
+let hideTab = false;
+try { hideTab = localStorage.getItem('cifras.hideTab') === '1'; } catch (e) {}
 const isChord = t => CHORD.test(t);
 let useFlats = false;
 const tn = (n, k) => (useFlats ? FLAT : SHARP)[((IDX[n] + k) % 12 + 12) % 12];
@@ -153,7 +159,12 @@ function renderChords(s, k, offset) {
 }
 
 function render(text, k) {
-  return clean(text).replace(/\r/g, '').split('\n').map(line => {
+  let lines = clean(text).replace(/\r/g, '').split('\n');
+  if (hideTab) { // tira as linhas de tablatura e junta as linhas em branco que sobram
+    lines = lines.filter(l => !isTab(l));
+    lines = lines.filter((l, i) => l.trim() || (i > 0 && lines[i - 1].trim()));
+  }
+  return lines.map(line => {
     const lm = line.match(LABEL);
     if (lm) {
       const rest = line.slice(lm[0].length);
@@ -162,7 +173,7 @@ function render(text, k) {
       if (isChordLine(rest)) return head + renderChords(rest, k, 0).replace(/^/, '');
       return head + esc(rest);
     }
-    if (TAB.test(line) && line.includes('-')) return esc(line);
+    if (isTab(line)) return esc(line);
     if (isChordLine(line)) return renderChords(line, k, 0);
     return esc(line);
   }).join('\n');
@@ -272,17 +283,27 @@ $('fDown').onclick = () => upd({ font: Math.max(9, (cur.font || 15) - 1) });
 $('sUp').onclick = () => upd({ speed: Math.min(20, Math.round((speed() + (speed() < 3 ? 0.2 : 0.5)) * 10) / 10) });
 $('sDown').onclick = () => upd({ speed: Math.max(0.2, Math.round((speed() - (speed() <= 3 ? 0.2 : 0.5)) * 10) / 10) });
 $('play').onclick = () => raf ? stop() : start();
+const paintTab = () => { $('tabBtn').textContent = hideTab ? 'Mostrar' : 'Esconder'; $('tabBtn').setAttribute('aria-pressed', hideTab); };
+$('tabBtn').onclick = () => { hideTab = !hideTab; try { localStorage.setItem('cifras.hideTab', hideTab ? '1' : '0'); } catch (e) {} paintTab(); paint(); };
+paintTab();
 $('sheet').onclick = () => document.body.classList.toggle('hide');
 document.addEventListener('keydown', e => { if ($('song').hidden) return; if (e.code === 'Space') { e.preventDefault(); raf ? stop() : start(); } });
 
 /* backup */
 $('exportBtn').onclick = async () => { try { await navigator.clipboard.writeText(JSON.stringify(db)); toast('Backup copiado'); } catch (e) { toast('Não deu para copiar aqui'); } };
-const importJson = txt => { try { const d = JSON.parse(txt); if (!Array.isArray(d.songs)) throw 0;
-  const ids = new Set(db.songs.map(s => s.id)); let n = 0;
-  for (const s of d.songs) if (!ids.has(s.id)) { s.text = clean(String(s.text || '')); db.songs.push(s); n++; }
-  save(); drawList(); toast(n + ' cifra(s) importada(s)'); } catch (e) { toast('Backup inválido'); } };
+/* replace: true = sobrescreve título, artista e texto das músicas com o mesmo id (mantém tom, fonte e rolagem) */
+const importJson = (txt, replace) => { try { const d = JSON.parse(txt); if (!Array.isArray(d.songs)) throw 0;
+  const byId = new Map(db.songs.map(s => [s.id, s])); let n = 0, r = 0;
+  for (const s of d.songs) {
+    s.text = clean(String(s.text || ''));
+    const old = byId.get(s.id);
+    if (!old) { db.songs.push(s); byId.set(s.id, s); n++; }
+    else if (replace) { Object.assign(old, { title: s.title, artist: s.artist, text: s.text, updated: Date.now() }); r++; }
+  }
+  save(); drawList(); toast(replace ? `${n} nova(s), ${r} atualizada(s)` : n + ' cifra(s) importada(s)'); } catch (e) { toast('Backup inválido'); } };
 $('importBtn').onclick = async () => { try { importJson(await navigator.clipboard.readText()); } catch (e) { toast('Use "Abrir arquivo" neste navegador'); } };
-$('importFile').onchange = e => { const f = e.target.files[0]; if (f) f.text().then(importJson); e.target.value = ''; };
+$('importFile').onchange = e => { const f = e.target.files[0]; if (f) f.text().then(t => importJson(t)); e.target.value = ''; };
+$('reimportFile').onchange = e => { const f = e.target.files[0]; if (f) f.text().then(t => importJson(t, true)); e.target.value = ''; };
 
 /* ---------- início ---------- */
 load();

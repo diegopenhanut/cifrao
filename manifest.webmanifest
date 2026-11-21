@@ -1,6 +1,6 @@
 {
-  "name": "Cifras",
-  "short_name": "Cifras",
+  "name": "Cifrão",
+  "short_name": "Cifrão",
   "description": "Cifras limpas, com troca de tom e rolagem automática, offline.",
   "start_url": "./",
   "scope": "./",
